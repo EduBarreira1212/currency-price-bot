@@ -3,9 +3,12 @@ package main
 import (
 	"currency-price-bot/internal/price"
 	"currency-price-bot/internal/telegram"
+	"fmt"
 	"log"
 	"os"
+	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
 )
 
@@ -23,5 +26,22 @@ func main() {
 	priceService := price.NewService()
 	bot := telegram.NewBot(token, priceService)
 	log.Println("Bot started successfully")
-	bot.Start()
+	go bot.Start()
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+
+			for chatID := range bot.Subscribers() {
+				btcPrice, _ := priceService.GetPrice("bitcoin")
+				ethPrice, _ := priceService.GetPrice("ethereum")
+
+				text := fmt.Sprintf("📈 BTC: $%s\n📉 ETH: $%s", btcPrice, ethPrice)
+
+				msg := tgbotapi.NewMessage(chatID, text)
+				bot.SendMessage(msg)
+			}
+		}
+	}()
+
+	select {}
 }
