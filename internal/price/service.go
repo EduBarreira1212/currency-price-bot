@@ -12,8 +12,9 @@ func NewService() *Service {
 	return &Service{}
 }
 
-func (s *Service) GetBitcoinPrice() (string, error) {
-	resp, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd")
+func (s *Service) GetPrice(coin string) (string, error) {
+	url := fmt.Sprintf("https://api.coingecko.com/api/v3/simple/price?ids=%s&vs_currencies=usd", coin)
+	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
 	}
@@ -24,22 +25,6 @@ func (s *Service) GetBitcoinPrice() (string, error) {
 		return "", err
 	}
 
-	price := data["bitcoin"]["usd"]
-	return fmt.Sprintf("%.2f", price), nil
-}
-
-func (s *Service) GetEthereumPrice() (string, error) {
-	resp, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var data map[string]map[string]float64
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return "", err
-	}
-
-	price := data["ethereum"]["usd"]
+	price := data[coin]["usd"]
 	return fmt.Sprintf("%.2f", price), nil
 }
