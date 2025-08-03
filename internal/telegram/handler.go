@@ -45,16 +45,24 @@ func (b *Bot) Start() {
 }
 
 func (b *Bot) handleStartCommand(msg *tgbotapi.Message) {
-	b.subscribers[msg.Chat.ID] = true
+	var statusButton tgbotapi.InlineKeyboardButton
+
+	if b.subscribers[msg.Chat.ID] {
+		statusButton = tgbotapi.NewInlineKeyboardButtonData("🔕 Stop Updates", "stop_updates")
+	} else {
+		statusButton = tgbotapi.NewInlineKeyboardButtonData("🔔 Start Updates", "start_updates")
+	}
 
 	buttonBTC := tgbotapi.NewInlineKeyboardButtonData("💰 Get BTC", "get_btc")
 	buttonETH := tgbotapi.NewInlineKeyboardButtonData("🔥 Get ETH", "get_eth")
+	buttonSOL := tgbotapi.NewInlineKeyboardButtonData("🔥 Get SOL", "get_sol")
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(buttonBTC, buttonETH),
+		tgbotapi.NewInlineKeyboardRow(buttonBTC, buttonETH, buttonSOL),
+		tgbotapi.NewInlineKeyboardRow(statusButton),
 	)
 
-	text := "Welcome! Click the button below to get the price of the choosen coin:"
+	text := "Welcome! Choose a coin or manage auto updates:"
 	message := tgbotapi.NewMessage(msg.Chat.ID, text)
 	message.ReplyMarkup = keyboard
 
@@ -80,6 +88,18 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		b.sendPrice(cb.Message.Chat.ID, cb.ID, "bitcoin")
 	case "get_eth":
 		b.sendPrice(cb.Message.Chat.ID, cb.ID, "ethereum")
+	case "get_sol":
+		b.sendPrice(cb.Message.Chat.ID, cb.ID, "solana")
+	case "start_updates":
+		b.subscribers[cb.Message.Chat.ID] = true
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🔔 Auto-updates enabled!"))
+		b.handleStartCommand(cb.Message)
+
+	case "stop_updates":
+		delete(b.subscribers, cb.Message.Chat.ID)
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🔕 Auto-updates disabled."))
+		b.handleStartCommand(cb.Message)
+
 	}
 }
 
