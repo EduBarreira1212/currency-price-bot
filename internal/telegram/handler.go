@@ -40,5 +40,16 @@ func (b *Bot) Start() {
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
 			b.api.Send(msg)
 		}
+
+		if update.Message.Text == "/eth" {
+			ethPrice, err := b.price.GetEthereumPrice()
+			msgText := "Ethereum price: $" + ethPrice
+			if err != nil {
+				msgText = "Failed to fetch price: " + err.Error()
+			}
+
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
+			b.api.Send(msg)
+		}
 	}
 }
