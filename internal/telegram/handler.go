@@ -2,13 +2,15 @@ package telegram
 
 import (
 	"currency-price-bot/internal/price"
+	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type Bot struct {
-	api   *tgbotapi.BotAPI
-	price *price.Service
+	api         *tgbotapi.BotAPI
+	price       *price.Service
+	subscribers map[int64]bool
 }
 
 func NewBot(token string, priceService *price.Service) *Bot {
@@ -17,7 +19,11 @@ func NewBot(token string, priceService *price.Service) *Bot {
 		panic(err)
 	}
 
-	return &Bot{api: bot, price: priceService}
+	return &Bot{
+		api:         bot,
+		price:       priceService,
+		subscribers: make(map[int64]bool),
+	}
 }
 
 func (b *Bot) Start() {
@@ -39,10 +45,13 @@ func (b *Bot) Start() {
 }
 
 func (b *Bot) handleStartCommand(msg *tgbotapi.Message) {
-	btcButton := tgbotapi.NewInlineKeyboardButtonData("💰 Get Bitcoin Price", "get_btc")
-	ethButton := tgbotapi.NewInlineKeyboardButtonData("💰 Get Ethereum Price", "get_eth")
+	b.subscribers[msg.Chat.ID] = true
+
+	buttonBTC := tgbotapi.NewInlineKeyboardButtonData("💰 Get BTC", "get_btc")
+	buttonETH := tgbotapi.NewInlineKeyboardButtonData("🔥 Get ETH", "get_eth")
+
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(btcButton, ethButton),
+		tgbotapi.NewInlineKeyboardRow(buttonBTC, buttonETH),
 	)
 
 	text := "Welcome! Click the button below to get the price of the choosen coin:"
@@ -52,29 +61,32 @@ func (b *Bot) handleStartCommand(msg *tgbotapi.Message) {
 	b.api.Send(message)
 }
 
+func (b *Bot) sendPrice(chatID int64, callbackID, coin string) {
+	b.api.Request(tgbotapi.NewCallback(callbackID, "Fetching "+coin+" price..."))
+
+	price, err := b.price.GetPrice(coin)
+	text := fmt.Sprintf("💵 %s: $%s", coin, price)
+	if err != nil {
+		text = "❌ Error fetching price: " + err.Error()
+	}
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	b.api.Send(msg)
+}
+
 func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	switch cb.Data {
 	case "get_btc":
-		b.api.Request(tgbotapi.NewCallback(cb.ID, "Fetching BTC price..."))
-
-		price, err := b.price.GetBitcoinPrice()
-		msgText := "💵 BTC: $" + price
-		if err != nil {
-			msgText = "❌ Error fetching BTC price: " + err.Error()
-		}
-
-		msg := tgbotapi.NewMessage(cb.Message.Chat.ID, msgText)
-		b.api.Send(msg)
+		b.sendPrice(cb.Message.Chat.ID, cb.ID, "bitcoin")
 	case "get_eth":
-		b.api.Request(tgbotapi.NewCallback(cb.ID, "Fetching ETH price..."))
-
-		price, err := b.price.GetEthereumPrice()
-		msgText := "💵 ETH: $" + price
-		if err != nil {
-			msgText = "❌ Error fetching ETH price: " + err.Error()
-		}
-
-		msg := tgbotapi.NewMessage(cb.Message.Chat.ID, msgText)
-		b.api.Send(msg)
+		b.sendPrice(cb.Message.Chat.ID, cb.ID, "ethereum")
 	}
+}
+
+func (b *Bot) Subscribers() map[int64]bool {
+	return b.subscribers
+}
+
+func (b *Bot) SendMessage(msg tgbotapi.MessageConfig) {
+	b.api.Send(msg)
 }
