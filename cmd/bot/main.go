@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -39,11 +40,17 @@ func main() {
 					continue
 				}
 
-				btcPrice, _ := priceService.GetPrice("bitcoin")
-				ethPrice, _ := priceService.GetPrice("ethereum")
-				solPrice, _ := priceService.GetPrice("solana")
+				currency := bot.GetCurrency(chatID)
 
-				text := fmt.Sprintf("📈 BTC: $%s\n📉 ETH: $%s\n📉 SOL: $%s", btcPrice, ethPrice, solPrice)
+				btcPrice, _ := priceService.GetPrice("bitcoin", currency)
+				ethPrice, _ := priceService.GetPrice("ethereum", currency)
+				solPrice, _ := priceService.GetPrice("solana", currency)
+
+				text := fmt.Sprintf("📈 BTC (%s): $%s\n📉 ETH (%s): $%s\n📉 SOL (%s): $%s",
+					strings.ToUpper(currency), btcPrice,
+					strings.ToUpper(currency), ethPrice,
+					strings.ToUpper(currency), solPrice)
+
 				msg := tgbotapi.NewMessage(chatID, text)
 				bot.SendMessage(msg)
 				bot.UpdateLastSent(chatID)
