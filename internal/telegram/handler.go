@@ -3,6 +3,7 @@ package telegram
 import (
 	"currency-price-bot/internal/price"
 	"fmt"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -11,6 +12,8 @@ type Bot struct {
 	api         *tgbotapi.BotAPI
 	price       *price.Service
 	subscribers map[int64]bool
+	intervals   map[int64]time.Duration
+	lastSent    map[int64]time.Time
 }
 
 func NewBot(token string, priceService *price.Service) *Bot {
@@ -23,6 +26,8 @@ func NewBot(token string, priceService *price.Service) *Bot {
 		api:         bot,
 		price:       priceService,
 		subscribers: make(map[int64]bool),
+		intervals:   make(map[int64]time.Duration),
+		lastSent:    make(map[int64]time.Time),
 	}
 }
 
@@ -57,12 +62,46 @@ func (b *Bot) handleStartCommand(msg *tgbotapi.Message) {
 	buttonETH := tgbotapi.NewInlineKeyboardButtonData("🔥 Get ETH", "get_eth")
 	buttonSOL := tgbotapi.NewInlineKeyboardButtonData("🔥 Get SOL", "get_sol")
 
+	intervalButtons := tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("1️⃣ 1 min", "interval_1"),
+		tgbotapi.NewInlineKeyboardButtonData("5️⃣ 5 min", "interval_5"),
+		tgbotapi.NewInlineKeyboardButtonData("🔟 10 min", "interval_10"),
+	)
+
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(buttonBTC, buttonETH, buttonSOL),
 		tgbotapi.NewInlineKeyboardRow(statusButton),
+		intervalButtons,
 	)
 
 	text := "Welcome! Choose a coin or manage auto updates:"
+	message := tgbotapi.NewMessage(msg.Chat.ID, text)
+	message.ReplyMarkup = keyboard
+
+	b.api.Send(message)
+}
+
+func (b *Bot) handleStartUpdatesCommand(msg *tgbotapi.Message) {
+	var statusButton tgbotapi.InlineKeyboardButton
+
+	if b.subscribers[msg.Chat.ID] {
+		statusButton = tgbotapi.NewInlineKeyboardButtonData("🔕 Stop Updates", "stop_updates")
+	} else {
+		statusButton = tgbotapi.NewInlineKeyboardButtonData("🔔 Start Updates", "start_updates")
+	}
+
+	intervalButtons := tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("1️⃣ 1 min", "interval_1"),
+		tgbotapi.NewInlineKeyboardButtonData("5️⃣ 5 min", "interval_5"),
+		tgbotapi.NewInlineKeyboardButtonData("🔟 10 min", "interval_10"),
+	)
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(statusButton),
+		intervalButtons,
+	)
+
+	text := "Choose an interval:"
 	message := tgbotapi.NewMessage(msg.Chat.ID, text)
 	message.ReplyMarkup = keyboard
 
@@ -93,13 +132,20 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	case "start_updates":
 		b.subscribers[cb.Message.Chat.ID] = true
 		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🔔 Auto-updates enabled!"))
-		b.handleStartCommand(cb.Message)
-
+		b.handleStartUpdatesCommand(cb.Message)
 	case "stop_updates":
 		delete(b.subscribers, cb.Message.Chat.ID)
 		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🔕 Auto-updates disabled."))
 		b.handleStartCommand(cb.Message)
-
+	case "interval_1":
+		b.setInterval(cb.Message.Chat.ID, 1*time.Minute)
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🕐 Interval set to 1 minute."))
+	case "interval_5":
+		b.setInterval(cb.Message.Chat.ID, 5*time.Minute)
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🕔 Interval set to 5 minutes."))
+	case "interval_10":
+		b.setInterval(cb.Message.Chat.ID, 10*time.Minute)
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🔟 Interval set to 10 minutes."))
 	}
 }
 
@@ -109,4 +155,29 @@ func (b *Bot) Subscribers() map[int64]bool {
 
 func (b *Bot) SendMessage(msg tgbotapi.MessageConfig) {
 	b.api.Send(msg)
+}
+
+func (b *Bot) setInterval(chatID int64, interval time.Duration) {
+	b.intervals[chatID] = interval
+	if _, ok := b.lastSent[chatID]; !ok {
+		b.lastSent[chatID] = time.Time{}
+	}
+}
+
+func (b *Bot) GetInterval(chatID int64) time.Duration {
+	if interval, ok := b.intervals[chatID]; ok {
+		return interval
+	}
+	return 5 * time.Minute
+}
+
+func (b *Bot) GetLastSent(chatID int64) time.Time {
+	if last, ok := b.lastSent[chatID]; ok {
+		return last
+	}
+	return time.Time{}
+}
+
+func (b *Bot) UpdateLastSent(chatID int64) {
+	b.lastSent[chatID] = time.Now()
 }
