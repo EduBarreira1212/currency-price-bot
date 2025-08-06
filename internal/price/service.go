@@ -12,8 +12,8 @@ func NewService() *Service {
 	return &Service{}
 }
 
-func (s *Service) GetPrice(coin string) (string, error) {
-	url := fmt.Sprintf("https://api.coingecko.com/api/v3/simple/price?ids=%s&vs_currencies=usd", coin)
+func (s *Service) GetPrice(coin, currency string) (string, error) {
+	url := fmt.Sprintf("https://api.coingecko.com/api/v3/simple/price?ids=%s&vs_currencies=%s", coin, currency)
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
@@ -25,6 +25,6 @@ func (s *Service) GetPrice(coin string) (string, error) {
 		return "", err
 	}
 
-	price := data[coin]["usd"]
+	price := data[coin][currency]
 	return fmt.Sprintf("%.2f", price), nil
 }
