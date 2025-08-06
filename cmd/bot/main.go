@@ -29,17 +29,24 @@ func main() {
 	go bot.Start()
 	go func() {
 		for {
-			time.Sleep(30 * time.Second)
+			time.Sleep(10 * time.Second)
 
 			for chatID := range bot.Subscribers() {
+				interval := bot.GetInterval(chatID)
+				last := bot.GetLastSent(chatID)
+
+				if time.Since(last) < interval {
+					continue
+				}
+
 				btcPrice, _ := priceService.GetPrice("bitcoin")
 				ethPrice, _ := priceService.GetPrice("ethereum")
 				solPrice, _ := priceService.GetPrice("solana")
 
-				text := fmt.Sprintf("📈 BTC: $%s\n📉 ETH: $%s\n📈 SOL: $%s", btcPrice, ethPrice, solPrice)
-
+				text := fmt.Sprintf("📈 BTC: $%s\n📉 ETH: $%s\n📉 SOL: $%s", btcPrice, ethPrice, solPrice)
 				msg := tgbotapi.NewMessage(chatID, text)
 				bot.SendMessage(msg)
+				bot.UpdateLastSent(chatID)
 			}
 		}
 	}()
