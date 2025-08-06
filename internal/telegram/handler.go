@@ -3,17 +3,19 @@ package telegram
 import (
 	"currency-price-bot/internal/price"
 	"fmt"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type Bot struct {
-	api         *tgbotapi.BotAPI
-	price       *price.Service
-	subscribers map[int64]bool
-	intervals   map[int64]time.Duration
-	lastSent    map[int64]time.Time
+	api               *tgbotapi.BotAPI
+	price             *price.Service
+	subscribers       map[int64]bool
+	intervals         map[int64]time.Duration
+	lastSent          map[int64]time.Time
+	preferredCurrency map[int64]string
 }
 
 func NewBot(token string, priceService *price.Service) *Bot {
@@ -23,11 +25,12 @@ func NewBot(token string, priceService *price.Service) *Bot {
 	}
 
 	return &Bot{
-		api:         bot,
-		price:       priceService,
-		subscribers: make(map[int64]bool),
-		intervals:   make(map[int64]time.Duration),
-		lastSent:    make(map[int64]time.Time),
+		api:               bot,
+		price:             priceService,
+		subscribers:       make(map[int64]bool),
+		intervals:         make(map[int64]time.Duration),
+		lastSent:          make(map[int64]time.Time),
+		preferredCurrency: make(map[int64]string),
 	}
 }
 
@@ -62,16 +65,16 @@ func (b *Bot) handleStartCommand(msg *tgbotapi.Message) {
 	buttonETH := tgbotapi.NewInlineKeyboardButtonData("🔥 Get ETH", "get_eth")
 	buttonSOL := tgbotapi.NewInlineKeyboardButtonData("🔥 Get SOL", "get_sol")
 
-	intervalButtons := tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("1️⃣ 1 min", "interval_1"),
-		tgbotapi.NewInlineKeyboardButtonData("5️⃣ 5 min", "interval_5"),
-		tgbotapi.NewInlineKeyboardButtonData("🔟 10 min", "interval_10"),
+	currencyButtons := tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("💵 USD", "currency_usd"),
+		tgbotapi.NewInlineKeyboardButtonData("💶 EUR", "currency_eur"),
+		tgbotapi.NewInlineKeyboardButtonData("🇧🇷 BRL", "currency_brl"),
 	)
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(buttonBTC, buttonETH, buttonSOL),
 		tgbotapi.NewInlineKeyboardRow(statusButton),
-		intervalButtons,
+		currencyButtons,
 	)
 
 	text := "Welcome! Choose a coin or manage auto updates:"
@@ -111,8 +114,11 @@ func (b *Bot) handleStartUpdatesCommand(msg *tgbotapi.Message) {
 func (b *Bot) sendPrice(chatID int64, callbackID, coin string) {
 	b.api.Request(tgbotapi.NewCallback(callbackID, "Fetching "+coin+" price..."))
 
-	price, err := b.price.GetPrice(coin)
-	text := fmt.Sprintf("💵 %s: $%s", coin, price)
+	currency := b.getCurrency(chatID)
+
+	price, err := b.price.GetPrice(coin, currency)
+	text := fmt.Sprintf("💵 %s (%s): %s", coin, strings.ToUpper(currency), price)
+
 	if err != nil {
 		text = "❌ Error fetching price: " + err.Error()
 	}
@@ -129,6 +135,15 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		b.sendPrice(cb.Message.Chat.ID, cb.ID, "ethereum")
 	case "get_sol":
 		b.sendPrice(cb.Message.Chat.ID, cb.ID, "solana")
+	case "currency_usd":
+		b.setCurrency(cb.Message.Chat.ID, "usd")
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "💵 Currency set to USD."))
+	case "currency_eur":
+		b.setCurrency(cb.Message.Chat.ID, "eur")
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "💶 Currency set to EUR."))
+	case "currency_brl":
+		b.setCurrency(cb.Message.Chat.ID, "brl")
+		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🇧🇷 Currency set to BRL."))
 	case "start_updates":
 		b.subscribers[cb.Message.Chat.ID] = true
 		b.api.Send(tgbotapi.NewMessage(cb.Message.Chat.ID, "🔔 Auto-updates enabled!"))
@@ -180,4 +195,19 @@ func (b *Bot) GetLastSent(chatID int64) time.Time {
 
 func (b *Bot) UpdateLastSent(chatID int64) {
 	b.lastSent[chatID] = time.Now()
+}
+
+func (b *Bot) setCurrency(chatID int64, currency string) {
+	b.preferredCurrency[chatID] = currency
+}
+
+func (b *Bot) getCurrency(chatID int64) string {
+	if c, ok := b.preferredCurrency[chatID]; ok {
+		return c
+	}
+	return "usd"
+}
+
+func (b *Bot) GetCurrency(chatID int64) string {
+	return b.getCurrency(chatID)
 }
