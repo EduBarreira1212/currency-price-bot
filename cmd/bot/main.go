@@ -14,8 +14,7 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
+	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
@@ -26,33 +25,54 @@ func main() {
 
 	priceService := price.NewService()
 	bot := telegram.NewBot(token, priceService)
-	log.Println("Bot started successfully")
-	go bot.Start()
-	go func() {
-		for {
-			time.Sleep(10 * time.Second)
 
-			for chatID := range bot.Subscribers() {
+	log.Println("Bot started successfully")
+
+	go bot.Start()
+
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		for range ticker.C {
+			for _, chatID := range bot.SnapshotSubscribers() {
 				interval := bot.GetInterval(chatID)
 				last := bot.GetLastSent(chatID)
-
 				if time.Since(last) < interval {
 					continue
 				}
 
 				currency := bot.GetCurrency(chatID)
+				cu := strings.ToUpper(currency)
 
-				btcPrice, _ := priceService.GetPrice("bitcoin", currency)
-				ethPrice, _ := priceService.GetPrice("ethereum", currency)
-				solPrice, _ := priceService.GetPrice("solana", currency)
+				btcPrice, err1 := priceService.GetPrice("bitcoin", currency)
+				ethPrice, err2 := priceService.GetPrice("ethereum", currency)
+				solPrice, err3 := priceService.GetPrice("solana", currency)
 
-				text := fmt.Sprintf("📈 BTC (%s): $%s\n📉 ETH (%s): $%s\n📉 SOL (%s): $%s",
-					strings.ToUpper(currency), btcPrice,
-					strings.ToUpper(currency), ethPrice,
-					strings.ToUpper(currency), solPrice)
+				var text string
+				if err1 != nil || err2 != nil || err3 != nil {
+					text = "⚠️ Failed fetching some prices:\n"
+					if err1 != nil {
+						text += "BTC error: " + err1.Error() + "\n"
+					} else {
+						text += fmt.Sprintf("📈 BTC (%s): $%s\n", cu, btcPrice)
+					}
+					if err2 != nil {
+						text += "ETH error: " + err2.Error() + "\n"
+					} else {
+						text += fmt.Sprintf("📉 ETH (%s): $%s\n", cu, ethPrice)
+					}
+					if err3 != nil {
+						text += "SOL error: " + err3.Error()
+					} else {
+						text += fmt.Sprintf("⚡ SOL (%s): $%s", cu, solPrice)
+					}
+				} else {
+					text = fmt.Sprintf(
+						"📈 BTC (%s): $%s\n📉 ETH (%s): $%s\n⚡ SOL (%s): $%s",
+						cu, btcPrice, cu, ethPrice, cu, solPrice,
+					)
+				}
 
-				msg := tgbotapi.NewMessage(chatID, text)
-				bot.SendMessage(msg)
+				bot.SendMessage(tgbotapi.NewMessage(chatID, text))
 				bot.UpdateLastSent(chatID)
 			}
 		}
