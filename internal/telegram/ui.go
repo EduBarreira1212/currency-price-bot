@@ -8,19 +8,30 @@ func buildMainKeyboard(subscribed bool) tgbotapi.InlineKeyboardMarkup {
 		status = tgbotapi.NewInlineKeyboardButtonData("🔕 Stop Updates", "stop_updates")
 	}
 
-	btnBTC := tgbotapi.NewInlineKeyboardButtonData("💰 Get BTC", "get_btc")
-	btnETH := tgbotapi.NewInlineKeyboardButtonData("🔥 Get ETH", "get_eth")
-	btnSOL := tgbotapi.NewInlineKeyboardButtonData("⚡ Get SOL", "get_sol")
+	rows := [][]tgbotapi.InlineKeyboardButton{}
+	row := []tgbotapi.InlineKeyboardButton{}
+	for i, c := range Coins {
+		btn := tgbotapi.NewInlineKeyboardButtonData(c.Emoji+" Get "+c.Label, "get_"+c.ID)
+		row = append(row, btn)
+		if (i+1)%3 == 0 {
+			rows = append(rows, row)
+			row = []tgbotapi.InlineKeyboardButton{}
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
 
 	cUSD := tgbotapi.NewInlineKeyboardButtonData("💵 USD", "currency_usd")
 	cEUR := tgbotapi.NewInlineKeyboardButtonData("💶 EUR", "currency_eur")
 	cBRL := tgbotapi.NewInlineKeyboardButtonData("🇧🇷 BRL", "currency_brl")
 
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(btnBTC, btnETH, btnSOL),
+	rows = append(rows,
 		tgbotapi.NewInlineKeyboardRow(status),
 		tgbotapi.NewInlineKeyboardRow(cUSD, cEUR, cBRL),
 	)
+
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
 func buildIntervalKeyboard(subscribed bool) tgbotapi.InlineKeyboardMarkup {
