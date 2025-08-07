@@ -29,15 +29,25 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 }
 
 func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
-	if h, ok := callbackHandlers[cb.Data]; ok {
+	data := cb.Data
+
+	if strings.HasPrefix(data, "get_") {
+		coinID := strings.TrimPrefix(data, "get_")
+		if c, ok := FindCoin(coinID); ok {
+			handleGetPrice(c.ID)(b, cb)
+			return
+		}
+
+		b.api.Request(tgbotapi.NewCallback(cb.ID, "Unknown asset"))
+		return
+	}
+
+	if h, ok := callbackHandlers[data]; ok {
 		h(b, cb)
 	}
 }
 
 var callbackHandlers = map[string]func(*Bot, *tgbotapi.CallbackQuery){
-	"get_btc":      handleGetPrice("bitcoin"),
-	"get_eth":      handleGetPrice("ethereum"),
-	"get_sol":      handleGetPrice("solana"),
 	"currency_usd": handleSetCurrency("usd"),
 	"currency_eur": handleSetCurrency("eur"),
 	"currency_brl": handleSetCurrency("brl"),
@@ -64,14 +74,18 @@ var callbackHandlers = map[string]func(*Bot, *tgbotapi.CallbackQuery){
 	"interval_10": handleSetInterval(10 * time.Minute),
 }
 
-func handleGetPrice(coin string) func(*Bot, *tgbotapi.CallbackQuery) {
+func handleGetPrice(coinID string) func(*Bot, *tgbotapi.CallbackQuery) {
 	return func(b *Bot, cb *tgbotapi.CallbackQuery) {
 		chatID := cb.Message.Chat.ID
-		b.api.Request(tgbotapi.NewCallback(cb.ID, "Fetching "+coin+" price..."))
+		b.api.Request(tgbotapi.NewCallback(cb.ID, "Fetching "+coinID+" price..."))
 		currency := b.state.getCurrency(chatID)
 
-		p, err := b.price.GetPrice(coin, currency)
-		text := fmt.Sprintf("💵 %s (%s): %s", coin, strings.ToUpper(currency), p)
+		p, err := b.price.GetPrice(coinID, currency)
+		label := coinID
+		if c, ok := FindCoin(coinID); ok {
+			label = c.Label
+		}
+		text := fmt.Sprintf("💵 %s (%s): %s", label, strings.ToUpper(currency), p)
 		if err != nil {
 			text = "❌ Error fetching price: " + err.Error()
 		}
