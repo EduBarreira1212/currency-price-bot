@@ -29,6 +29,11 @@ func main() {
 
 	go bot.Start()
 
+	coinIDs := make([]string, 0, len(telegram.Coins))
+	for _, c := range telegram.Coins {
+		coinIDs = append(coinIDs, c.ID)
+	}
+
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		for range ticker.C {
@@ -42,14 +47,32 @@ func main() {
 				currency := bot.GetCurrency(chatID)
 				cu := strings.ToUpper(currency)
 
+				prices, err := priceService.GetPrices(coinIDs, currency)
+				if err != nil {
+					log.Printf("batch GetPrices error: %v (falling back to single requests)", err)
+					prices = make(map[string]string, len(coinIDs))
+					for _, id := range coinIDs {
+						p, e := priceService.GetPrice(id, currency)
+						if e != nil {
+							prices[id] = "__ERR__:" + e.Error()
+						} else {
+							prices[id] = p
+						}
+					}
+				}
+
 				var lines []string
 				for _, c := range telegram.Coins {
-					price, err := priceService.GetPrice(c.ID, currency)
-					if err != nil {
-						lines = append(lines, fmt.Sprintf("%s %s (%s): error: %v", c.Emoji, c.Label, cu, err))
+					val, ok := prices[c.ID]
+					if !ok {
+						lines = append(lines, fmt.Sprintf("%s %s (%s): unavailable", c.Emoji, c.Label, cu))
 						continue
 					}
-					lines = append(lines, fmt.Sprintf("%s %s (%s): $%s", c.Emoji, c.Label, cu, price))
+					if strings.HasPrefix(val, "__ERR__:") {
+						lines = append(lines, fmt.Sprintf("%s %s (%s): error: %s", c.Emoji, c.Label, cu, strings.TrimPrefix(val, "__ERR__:")))
+						continue
+					}
+					lines = append(lines, fmt.Sprintf("%s %s (%s): $%s", c.Emoji, c.Label, cu, val))
 				}
 
 				text := strings.Join(lines, "\n")
